@@ -62,7 +62,7 @@ long timer = 0;
 long start_timer_button = 0;
 
 /* Paramètres LORAWAN */
-uint8_t devEui[] = {0x56, 0xE1, 0x95, 0xE0, 0x2F, 0xA7, 0x9F, 0x42}; //56E195E02FA79F42
+uint8_t devEui[] = {0x56, 0xE1, 0x95, 0xE0, 0x2F, 0xA7, 0x9F, 0x42}; // 56E195E02FA79F42
 uint8_t appEui[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 uint8_t appKey[] = {0x21, 0xFF, 0x38, 0xC9, 0x10, 0x5D, 0x1F, 0x4C, 0x86, 0xF6, 0x33, 0x4A, 0xF9, 0xCA, 0xF1, 0x13}; // 21FF38C9105D1F4C86F6334AF9CAF113
 // 70B3D57ED004E7CD
@@ -76,7 +76,7 @@ uint32_t devAddr = (uint32_t)0x000000000;
 LoRaMacRegion_t loraWanRegion = LORAMAC_REGION_EU868;
 DeviceClass_t loraWanClass = CLASS_A;
 
-uint32_t appTxDutyCycle = 1 * 60 * 1000; // 1 minute
+uint32_t appTxDutyCycle = 0.5 * 60 * 1000; // 1 minute
 
 bool overTheAirActivation = true;
 bool loraWanAdr = true;
@@ -208,10 +208,11 @@ void wake_up_tare()
   trigger_button = 1;
 }
 
-void getSensorsData(){
+void getSensorsData()
+{
 
   timer = millis();
-  Serial.print("start ... ");
+  // Serial.print("get sensors data ... ");
 
   bool load_cell_ok = 0;
   temp_sensor.requestTemperatures();
@@ -225,25 +226,24 @@ void getSensorsData(){
     load_cell_ok = 1;
     delay(10);
   }
-  float temperatureInCelsius = temp_sensor.getTempCByIndex(SENSOR_INDEX);
+  temp = temp_sensor.getTempCByIndex(SENSOR_INDEX);
 
-  Serial.print(millis() - timer); // 446 que les cellules de poids
-  Serial.println(" finish ");
+  // Serial.print(millis() - timer); // 446 que les cellules de poids
+  // Serial.println(" done ");
 
   /* Print valeurs capteur */
-  Serial.print(weight_1);
-  Serial.print(" / ");
-  Serial.println(weight_2);
-  Serial.println();
-  Serial.print("Temperature: ");
-  Serial.print(temperatureInCelsius, 4);
-  Serial.println(" Celsius, ");
+  // Serial.print(weight_1);
+  // Serial.print(" / ");
+  // Serial.print(weight_2);
+  // Serial.print(" / ");
+  // Serial.println(temp, 4);
 }
 
 void buttonPressed()
 {
   if (trigger_button == 1)
   {
+    digitalWrite(Vext, LOW);
     digitalWrite(pin_LED_button, HIGH);
     delay(1000);
     detachInterrupt(pin_button);
@@ -262,18 +262,36 @@ void buttonPressed()
       last_val_button = val_button;
     }
     Serial.println(number_button_press);
-
+    digitalWrite(pin_LED_button, LOW);
+    delay(1000);
     if (number_button_press == 1)
     {
       tareLoadCell_1();
+      digitalWrite(pin_LED_button, HIGH);
+      delay(500);
+      digitalWrite(pin_LED_button, LOW);
     }
     else if (number_button_press == 2)
     {
       tareLoadCell_2();
+      for (int i = 0; i < 2; i++)
+      {
+        digitalWrite(pin_LED_button, HIGH);
+        delay(500);
+        digitalWrite(pin_LED_button, LOW);
+        delay(500);
+      }
     }
     else if (number_button_press == 3)
     {
       tareLoadCell();
+      for (int i = 0; i < 3; i++)
+      {
+        digitalWrite(pin_LED_button, HIGH);
+        delay(500);
+        digitalWrite(pin_LED_button, LOW);
+        delay(500);
+      }
     }
 
     digitalWrite(pin_LED_button, LOW);
@@ -282,22 +300,40 @@ void buttonPressed()
   }
 }
 
+static void getBatteryVoltageFloat(void)
+{
+  pinMode(VBAT_ADC_CTL, OUTPUT);
+  digitalWrite(VBAT_ADC_CTL, LOW);
+
+  uint16_t u16BatteryVoltage = analogRead(ADC) * 2;
+  pinMode(VBAT_ADC_CTL, INPUT);
+  // fBatteryVoltage = (float)u16BatteryVoltage / 1000;
+  // Serial.print("Battery Voltage: ");
+  // Serial.print(u16BatteryVoltage);
+  // Serial.println("mV");
+
+  voltage = getBatteryVoltage();
+  // Serial.print("Battery Voltage Cubecell: ");
+  // Serial.print(voltage);
+  // Serial.println("mV");
+}
+
 static void prepareTxFrame(uint8_t port)
 {
   EEPROM.get(weight_adress_1, last_weight_1);
   EEPROM.get(weight_adress_2, last_weight_2);
   EEPROM.get(temp_adress, last_temp);
-  EEPROM.get(voltage_adress, voltage);
+  EEPROM.get(voltage_adress, last_voltage);
 
   digitalWrite(Vext, LOW);
 
-  // getSensorsData();
+  getSensorsData();
+  getBatteryVoltageFloat();
 
-  voltage = 3850;
-  weight_1 = 47.75;
-  weight_2 = 56.75;
-  temp = 18.56;
-
+  // voltage = 3850;
+  // weight_1 = 47.75;
+  // weight_2 = 56.75;
+  // temp = 18.56;
 
   if (last_temp == temp && weight_1 == last_weight_1 && weight_2 == last_weight_2 && voltage == last_voltage)
   {
@@ -352,7 +388,7 @@ void setup()
   deviceState = DEVICE_STATE_INIT;
   LoRaWAN.ifskipjoin();
 
-  delay(100);
+  // delay(20);
 
   temp_sensor.begin();
   temp_sensor.setWaitForConversion(false);
@@ -361,8 +397,6 @@ void setup()
 
   LoadCell_1.begin();
   LoadCell_2.begin();
-
-  tareLoadCell();
 
   EEPROM.get(tare_adress_1, tare_1);
   Serial.println(tare_1);
@@ -400,28 +434,23 @@ void loop()
   case DEVICE_STATE_SEND:
   {
     // LoRaWAN.displaySending();
-    Serial.println(millis());
     prepareTxFrame(appPort);
     LoRaWAN.send();
     deviceState = DEVICE_STATE_CYCLE;
-    Serial.println(millis());
-    delay(100);
+    // delay(100);
     break;
   }
   case DEVICE_STATE_CYCLE:
   {
-    // Serial.println("device_state_cycle");
     //  Schedule next packet transmission
     txDutyCycleTime = appTxDutyCycle + randr(0, APP_TX_DUTYCYCLE_RND);
     LoRaWAN.cycle(txDutyCycleTime);
-    Serial.println(millis());
     deviceState = DEVICE_STATE_SLEEP;
     break;
   }
   case DEVICE_STATE_SLEEP:
   {
     // LoRaWAN.displayAck();
-    // Serial.println("sleep");
     LoRaWAN.sleep();
     break;
   }
