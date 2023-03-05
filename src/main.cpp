@@ -7,6 +7,21 @@
 #include <DallasTemperature.h>
 #include "string.h"
 #include <CayenneLPP.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+
+/* température humidité */
+#define DHTPIN GPIO1
+#define DHTTYPE DHT11 // DHT 11
+
+// See guide for details on sensor wiring and usage:
+//   https://learn.adafruit.com/dht/overview
+
+DHT_Unified dht(DHTPIN, DHTTYPE);
+
+float temperature_dht11 = 0;
+float humidity_dht11 = 0;
 
 /*  Capteur de température  */
 #define ONE_WIRE_PIN GPIO11
@@ -62,9 +77,9 @@ long timer = 0;
 long start_timer_button = 0;
 
 /* Paramètres LORAWAN */
-uint8_t devEui[] = {0x56, 0xE1, 0x95, 0xE0, 0x2F, 0xA7, 0x9F, 0x42}; // 56E195E02FA79F42
-uint8_t appEui[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-uint8_t appKey[] = {0x21, 0xFF, 0x38, 0xC9, 0x10, 0x5D, 0x1F, 0x4C, 0x86, 0xF6, 0x33, 0x4A, 0xF9, 0xCA, 0xF1, 0x13}; // 21FF38C9105D1F4C86F6334AF9CAF113
+uint8_t devEui[] =  {0x70, 0xB3, 0xD5, 0x7E, 0xD0, 0x05, 0xA5, 0x21}; // {0x56, 0xE1, 0x95, 0xE0, 0x2F, 0xA7, 0x9F, 0x42}; 70B3D57ED005A521 device : 260B4C05
+uint8_t appEui[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; 
+uint8_t appKey[] = {0x0F, 0x74, 0x3F, 0x98, 0x36, 0xB8, 0x68, 0xFB, 0xF5, 0xE0, 0x79, 0x23, 0x9E, 0xF2, 0x0A, 0xA2}; //{0x21, 0xFF, 0x38, 0xC9, 0x10, 0x5D, 0x1F, 0x4C, 0x86, 0xF6, 0x33, 0x4A, 0xF9, 0xCA, 0xF1, 0x13}; // {0x0F, 0x74, 0x3F, 0x98, 0x36, 0xB8, 0x68, 0xFB, 0xF5, 0xE0, 0x79, 0x23, 0x9E, 0xF2, 0x0A, 0xA2}; 0F743F9836B868FBF5E079239EF20AA2
 // 70B3D57ED004E7CD
 // 19C94F11AA26C1D8D13135E9AF4B56E6
 uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
@@ -76,7 +91,7 @@ uint32_t devAddr = (uint32_t)0x000000000;
 LoRaMacRegion_t loraWanRegion = LORAMAC_REGION_EU868;
 DeviceClass_t loraWanClass = CLASS_A;
 
-uint32_t appTxDutyCycle = 0.5 * 60 * 1000; // 1 minute
+uint32_t appTxDutyCycle = 60 * 60 * 1000; // 1 minute
 
 bool overTheAirActivation = true;
 bool loraWanAdr = true;
@@ -89,6 +104,46 @@ uint8_t appPort = 2;
 uint8_t confirmedNbTrials = 4;
 
 CayenneLPP lpp(160);
+long time = 0;
+long time2 = 0;
+
+void read_DHT11()
+{
+  sensors_event_t event;
+  /*
+  dht.temperature().getEvent(&event);
+  while(isnan(event.temperature)){
+    dht.temperature().getEvent(&event);
+  }
+  if (isnan(event.temperature)) {
+    Serial.println(F("Error reading temperature!"));
+  }
+  else {
+    Serial.print(F("Temperature: "));
+    Serial.print(event.temperature);
+    Serial.println(F("°C"));
+    temperature_dht11 =event.temperature;
+  }
+  */
+  // Get humidity event and print its value.
+  dht.humidity().getEvent(&event);
+  while (isnan(event.relative_humidity))
+  {
+    dht.humidity().getEvent(&event);
+  }
+
+  if (isnan(event.relative_humidity))
+  {
+    Serial.println(F("Error reading humidity!"));
+  }
+  else
+  {
+    Serial.print(F("Humidity: "));
+    Serial.print(event.relative_humidity);
+    Serial.println(F("%"));
+    humidity_dht11 = event.relative_humidity;
+  }
+}
 
 void tareLoadCell()
 {
@@ -212,7 +267,7 @@ void getSensorsData()
 {
 
   timer = millis();
-  // Serial.print("get sensors data ... ");
+  Serial.print("get sensors data ... ");
 
   bool load_cell_ok = 0;
   temp_sensor.requestTemperatures();
@@ -228,15 +283,14 @@ void getSensorsData()
   }
   temp = temp_sensor.getTempCByIndex(SENSOR_INDEX);
 
-  // Serial.print(millis() - timer); // 446 que les cellules de poids
-  // Serial.println(" done ");
-
   /* Print valeurs capteur */
-  // Serial.print(weight_1);
-  // Serial.print(" / ");
-  // Serial.print(weight_2);
-  // Serial.print(" / ");
-  // Serial.println(temp, 4);
+  Serial.print(millis() - timer); // 446 que les cellules de poids
+  Serial.println(" done ");
+  Serial.print(weight_1);
+  Serial.print(" / ");
+  Serial.print(weight_2);
+  Serial.print(" / ");
+  Serial.println(temp, 4);
 }
 
 void buttonPressed()
@@ -326,10 +380,15 @@ static void prepareTxFrame(uint8_t port)
   EEPROM.get(voltage_adress, last_voltage);
 
   digitalWrite(Vext, LOW);
+  // dht.begin();
+  time = millis();
 
   getSensorsData();
   getBatteryVoltageFloat();
+  read_DHT11();
 
+  time2 = millis();
+  Serial.println(time2 - time);
   // voltage = 3850;
   // weight_1 = 47.75;
   // weight_2 = 56.75;
@@ -365,6 +424,8 @@ static void prepareTxFrame(uint8_t port)
   lpp.addAnalogInput(2, weight_1);
   lpp.addAnalogInput(3, weight_2);
   lpp.addTemperature(4, temp);
+  lpp.addAnalogInput(5, humidity_dht11);
+
   appDataSize = lpp.getSize();
   memcpy(appData, lpp.getBuffer(), lpp.getSize());
 
@@ -407,6 +468,9 @@ void setup()
   Serial.println(tare_2);
   LoadCell_2.setTareOffset(tare_2);
   LoadCell_2.setCalFactor(calibrationValue_2);
+
+  dht.begin();
+  sensor_t sensor;
 
   attachInterrupt(pin_button, wake_up_tare, FALLING);
   // put your setup code here, to run once:
